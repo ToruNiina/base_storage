@@ -1,13 +1,14 @@
 #ifndef PSEUDO_STATIC_BASE_STORAGE_HPP
 #define PSEUDO_STATIC_BASE_STORAGE_HPP
 #include <type_traits>
-#include <typeinfo>
 #include <utility>
+#include <typeinfo>
+#include <typeindex>
 #include <memory>
 #include <stdexcept>
+#include <string>
 #include <array>
 #include <cassert>
-#include <iostream>
 
 namespace psd
 {
@@ -58,14 +59,18 @@ class base_storage
     using const_base_pointer   = base_type const*;
     using base_reference       = base_type&;
     using const_base_reference = base_type const&;
-    using replicator_ptr       =
-        void(*)(const detail::replication_scheme, void*, void*);
 
     constexpr static std::size_t capacity = Size;
     using storage_type = typename std::aligned_storage<capacity>::type;
 
+  private:
+
+    using replicator_ptr =
+        void(*)(const detail::replication_scheme, void*, void*);
+
   public:
-    base_storage(): replicator_(nullptr){}
+
+    base_storage() noexcept : replicator_(nullptr){}
     ~base_storage() noexcept {this->reset();}
 
     base_storage(base_storage const&);
@@ -205,7 +210,7 @@ void base_storage<Base, Size>::reset() noexcept
 }
 
 template<typename Base, std::size_t Size>
-void base_storage<Base, Size>::swap(base_storage& rhs) noexcept
+inline void base_storage<Base, Size>::swap(base_storage& rhs) noexcept
 {
     using std::swap;
     swap(this->replicator_, rhs.replicator_);
@@ -232,6 +237,108 @@ typename std::decay<T>::type& base_storage<Base, Size>::emplace(Ts&& ... vs)
     return *reinterpret_cast<rhs_t*>(std::addressof(this->storage_));
 }
 
+// --------------------------------- exception --------------------------------
+
+struct bad_base_storage_cast : public std::bad_cast
+{
+    bad_base_storage_cast() = default;
+    virtual ~bad_base_storage_cast() noexcept override = default;
+    bad_base_storage_cast(bad_base_storage_cast const&) = default;
+    bad_base_storage_cast(bad_base_storage_cast&&)      = default;
+    bad_base_storage_cast& operator=(bad_base_storage_cast const&) = default;
+    bad_base_storage_cast& operator=(bad_base_storage_cast&&)      = default;
+    virtual const char* what() const noexcept override {return what_str.c_str();}
+
+    bad_base_storage_cast(const std::string& str): what_str(str){};
+    bad_base_storage_cast(const std::type_info& from, const std::type_info& to)
+        : what_str(std::string("bad_base_storage_cast: ") +
+                   std::string(from.name()) + std::string(" -> ") +
+                   std::string(to.name()))
+    {}
+  private:
+    std::string what_str;
+};
+
+// ---------------------------- non-member functions ---------------------------
+
+template<typename Base, std::size_t Size>
+inline void
+swap(base_storage<Base, Size>& lhs, base_storage<Base, Size>& rhs) noexcept
+{
+    lhs.swap(rhs);
+    return;
+}
+
+template<typename Base, std::size_t Size, typename T, typename ... Ts>
+inline base_storage<Base, Size> make_base_storage(Ts&& ... args)
+{
+    return base_storage<Base, Size>(T(std::forward<Ts>(args)...));
+}
+
+template<typename ValueType, typename Base, std::size_t Size>
+const ValueType* base_storage_cast(const base_storage<Base, Size>* bs) noexcept
+{
+    if(bs != nullptr &&
+       std::type_index(bs->type()) == std::type_index(typeid(ValueType)))
+    {
+        return reinterpret_cast<const ValueType*>(bs->base_ptr());
+    }
+    return nullptr;
+}
+
+template<typename ValueType, typename Base, std::size_t Size>
+ValueType* base_storage_cast(base_storage<Base, Size>* bs) noexcept
+{
+    if(bs != nullptr &&
+       std::type_index(bs->type()) == std::type_index(typeid(ValueType)))
+    {
+        return reinterpret_cast<ValueType*>(bs->base_ptr());
+    }
+    return nullptr;
+}
+
+template<typename ValueType, typename Base, std::size_t Size>
+ValueType const& base_storage_cast(const base_storage<Base, Size>& bs)
+{
+    const ValueType* const p = base_storage_cast<ValueType>(std::addressof(bs));
+    if(p == nullptr)
+    {
+        throw bad_base_storage_cast(bs.type(), typeid(ValueType));
+    }
+    return *p;
+}
+template<typename ValueType, typename Base, std::size_t Size>
+ValueType& base_storage_cast(base_storage<Base, Size>& bs)
+{
+    ValueType* const p = base_storage_cast<ValueType>(std::addressof(bs));
+    if(p == nullptr)
+    {
+        throw bad_base_storage_cast(bs.type(), typeid(ValueType));
+    }
+    return *p;
+}
+template<typename ValueType, typename Base, std::size_t Size>
+ValueType&& base_storage_cast(base_storage<Base, Size>&& bs)
+{
+    ValueType* const p = base_storage_cast<ValueType>(std::addressof(bs));
+    if(p == nullptr)
+    {
+        throw bad_base_storage_cast(bs.type(), typeid(ValueType));
+    }
+    return *p;
+}
+
+// ------------------------------ max_size<Ts...> ------------------------------
+
+template<typename ... Ts>
+struct max_size;
+template<typename T, typename ... Ts>
+struct max_size<T, Ts...> : std::integral_constant<std::size_t,
+  (sizeof(T) > max_size<Ts...>::value) ? sizeof(T) : max_size<Ts...>::value>{};
+template<typename T>
+struct max_size<T> : std::integral_constant<std::size_t, sizeof(T)>{};
+template<>
+struct max_size<> : std::integral_constant<std::size_t, 0>{};
 
 } // psd
 #endif// STATIC_BASE_STORAGE_HPP
