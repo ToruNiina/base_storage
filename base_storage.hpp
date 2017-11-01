@@ -174,6 +174,7 @@ inline base_storage<Base, Size>::base_storage(T&& rhs)
 {
     using rhs_t = detail::unwrapped_t<T>;
     static_assert(sizeof(rhs_t) <= capacity, "base_storage: size exceed");
+
     this->replicator_ = &detail::replicator<rhs_t>;
     new(std::addressof(this->storage_)) rhs_t(std::forward<T>(rhs));
 }
@@ -185,6 +186,7 @@ inline base_storage<Base, Size>& base_storage<Base, Size>::operator=(T&& rhs)
 {
     using rhs_t = detail::unwrapped_t<T>;
     static_assert(sizeof(rhs_t) <= capacity, "base_storage: size exceed");
+
     this->reset();
     this->replicator_ = &detail::replicator<rhs_t>;
     new(std::addressof(this->storage_)) rhs_t(std::forward<T>(rhs));
@@ -194,7 +196,6 @@ inline base_storage<Base, Size>& base_storage<Base, Size>::operator=(T&& rhs)
 template<typename Base, std::size_t Size>
 void base_storage<Base, Size>::reset() noexcept
 {
-    std::cerr << "base_storage::reset()" << std::endl;
     if(this->has_value())
     {
         this->base_ptr()->~base_type();
@@ -223,11 +224,12 @@ template<typename T, typename ... Ts, typename std::enable_if<
     std::is_base_of<Base, T>::value, std::nullptr_t>::type>
 typename std::decay<T>::type& base_storage<Base, Size>::emplace(Ts&& ... vs)
 {
-    static_assert(sizeof(T) <= capacity, "base_storage: size exceed");
+    using rhs_t = detail::unwrapped_t<T>;
+    static_assert(sizeof(rhs_t) <= capacity, "base_storage: size exceed");
     this->reset();
     this->replicator_ = &detail::replicator<T>;
     new(std::addressof(this->storage_)) T(std::forward<Ts>(vs)...);
-    return *reinterpret_cast<T*>(std::addressof(this->storage_));
+    return *reinterpret_cast<rhs_t*>(std::addressof(this->storage_));
 }
 
 
