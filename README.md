@@ -17,6 +17,9 @@ The main idea is inspired by [static_any](https://github.com/david-grs/static_an
 
 ## Usage
 
+This depends only on C++11 STL and it is a single-file header-only library,
+all the things you have to do is to include the file.
+
 ```cpp
 #include <path/to/base_storage.hpp>
 #include <iostream>
@@ -195,6 +198,9 @@ std::integral_constant<std::size_t, /*maximum value in {sizeof(Ts) ...}*/>{};
 
 } // psd
 ```
+
+`psd` is from [this repository](https://github.com/ToruNiina/pseudo)
+(but base\_storage does not depend on it).
 
 ## Licensing Terms
 
